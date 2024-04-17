@@ -5,7 +5,7 @@ Android 动态路由框架：TheRouter
 [![Language](https://img.shields.io/badge/Language-Kotlin-green)](https://kotlinlang.org/)
 [![Wiki](https://img.shields.io/badge/Wiki-open-green)](https://therouter.cn/doc)
 
-TheRouter Android | [iOS](https://github.com/HuolalaTech/hll-wp-therouter-ios)
+Android | [iOS](https://github.com/HuolalaTech/hll-wp-therouter-ios) | [中文官网](https://therouter.cn) | [英文官网](https://en.therouter.cn)   
 
 ### 一、功能介绍
 
@@ -28,18 +28,18 @@ TheRouter 具备四大能力：
 
 |module| apt                                                                                                     | router                                                                                                           | plugin                                                                                                           |
 |---|---------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
-|version| [![apt](https://img.shields.io/badge/apt-1.2.1-green)](https://repo1.maven.org/maven2/cn/therouter/apt) | [![router](https://img.shields.io/badge/router-1.2.1-green)](https://repo1.maven.org/maven2/cn/therouter/router) | [![plugin](https://img.shields.io/badge/plugin-1.2.1-green)](https://repo1.maven.org/maven2/cn/therouter/plugin) |
+|version| [![apt](https://img.shields.io/badge/apt-1.2.2-green)](https://repo1.maven.org/maven2/cn/therouter/apt) | [![router](https://img.shields.io/badge/router-1.2.2-green)](https://repo1.maven.org/maven2/cn/therouter/router) | [![plugin](https://img.shields.io/badge/plugin-1.2.2-green)](https://repo1.maven.org/maven2/cn/therouter/plugin) |
 
 ```
 // 项目根目录 build.gradle 引入
-classpath 'cn.therouter:plugin:1.2.1'
+classpath 'cn.therouter:plugin:1.2.2'
 
 // app module 中引入
 apply plugin: 'therouter'
 
 // 依赖，所有使用了注解的模块都要添加
-kapt "cn.therouter:apt:1.2.1"
-implementation "cn.therouter:router:1.2.1"
+kapt "cn.therouter:apt:1.2.2"
+implementation "cn.therouter:router:1.2.2"
 ```
 
 #### 2.2 初始化

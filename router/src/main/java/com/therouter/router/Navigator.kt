@@ -23,7 +23,9 @@ import com.therouter.router.interceptor.*
 import java.io.Serializable
 import java.lang.ref.SoftReference
 import com.therouter.require
+import java.lang.StringBuilder
 import java.util.*
+import kotlin.collections.HashMap
 
 private val disposableQueue = LinkedList<PendingNavigator>()
 internal val arguments = HashMap<String, SoftReference<Any>>()
@@ -32,10 +34,33 @@ internal val arguments = HashMap<String, SoftReference<Any>>()
  * 路由导航器。与RouterItem作用类似，允许互转。
  * RouterItem 用于描述一个静态的路由项
  * Navigator 用于描述一个路由项的跳转动作
+ *
+ *
+ * TheRouter.build(url).with(k,v)<br>
+ * 如果如果没有通过PathFixHandle拦截器修改，且只在build(url)时传入参数，TheRouter会确保参数在getUrlWithParams()导出时完全相同。<br>
+ * 如果build(url)时有拼接参数，同时又调用with()传入参数，TheRouter会保证with的参数拼接在url拼接的参数前且在hash字段之前<br>
+ * 如果有冲突时，优先使用with()中的kv，例如：<br>
+ * TheRouter.build("http://therouter.cn/page?a=b&k=v").withString("c","d").withString("k","x")<br>
+ * 调用getUrlWithParams()导出的url为：http://therouter.cn/page?c=d&a=b&k=x<br>
+ * 有hash字段时的处理，例如<br>
+ * TheRouter.build("https://therouter.cn/page?code=123&a=b#/abc").withString("code","111").withString("k","x")<br>
+ * 调用getUrlWithParams()导出的url为：https://therouter.cn/page?k=x&code=111&a=b#/abc<br>
+ *
+ * <br>
+ * 如果url的hash部分包含有参数时，TheRouter也会将参数直接解析出来作为页面跳转参数传递出去，<br>
+ * 但如果hash的参数与url的参数出现冲突，会优先取url的参数，例如：<br>
+ * TheRouter.build("http://therouter.cn/page?a=b&k=v#/abc&c=d&k=a").navigation()<br>
+ * 此时页面参数获取到的将是：a=b、k=v、c=d（k=a被k=v替代）<br>
+ * 如果url的hash部分包含有参数但同时又包含有问号时，将会认为hash部分是一个整体，是一个完整的子url，此时不会解析hash部分的参数，例如：<br>
+ * TheRouter.build("http://therouter.cn/page?a=b&k=v#/abc?c=d&k=a").navigation()<br>
+ * 此时页面参数获取到的将是：a=b、k=v，子串部分不会解析<br>
+ *
  */
 open class Navigator(var url: String?, val intent: Intent?) {
     val originalUrl = url
+    var pathFixOriginalUrl = ""
     val extras = Bundle()
+    val kvPair = HashMap<String, String>()
     private var optionsCompat: Bundle? = null
     private var pending = false
     private var intentIdentifier: String? = null
@@ -53,6 +78,60 @@ open class Navigator(var url: String?, val intent: Intent?) {
     constructor(url: String?) : this(url, null)
 
     init {
+        fun parser(kvPairString: String?, appendValue: String? = "") {
+            if (!kvPairString.isNullOrBlank() && kvPairString.trim() != "=") {
+                val index = kvPairString.indexOf("=")
+                //  http://therouter.cn/page?a&b=&=c
+                //  这个url中,a和b都被认为是只有k没有v的参数,c被认为只有v没有k的参数
+                var key = ""
+                var value = ""
+                when (index) {
+                    -1 -> {
+                        key = kvPairString
+                    }
+
+                    0 -> {
+                        value = kvPairString.substring(1)
+                    }
+
+                    else -> {
+                        key = kvPairString.substring(0, index)
+                        value = kvPairString.substring(index + 1)
+                    }
+                }
+                if (!TextUtils.isEmpty(appendValue?.trim())) {
+                    value += appendValue
+                }
+                if (!TextUtils.isEmpty(key) || !TextUtils.isEmpty(value)) {
+                    kvPair[key] = value
+                }
+            }
+        }
+
+        fun parserString(url: String?) {
+            if (url?.contains('?') == true) {
+                val index = url.indexOf('?')
+                if (index > -1) {
+                    val item1 = url.substring(0, index)
+                    // ?后面的部分都作为当前url的参数直接拼接
+                    val appendValue = url.substring(index + 1)
+                    val list = item1.split('&')
+                    if (list.isNotEmpty()) {
+                        for (i in list.indices) {
+                            if (i == list.size - 1) {
+                                parser(list[i], appendValue)
+                            } else {
+                                parser(list[i])
+                            }
+                        }
+                    }
+                }
+            } else {
+                url?.split("&")?.forEach { str ->
+                    parser(str)
+                }
+            }
+        }
         require(!TextUtils.isEmpty(url), "Navigator", "Navigator constructor parameter url is empty")
         for (handle in fixHandles) {
             handle?.let {
@@ -61,27 +140,10 @@ open class Navigator(var url: String?, val intent: Intent?) {
                 }
             }
         }
-//        uri = Uri.parse(url ?: "")
-//        for (key in uri.queryParameterNames) {
-//            // 通过url取到的value，都认为是string，autowired解析的时候会做兼容
-//            extras.putString(key, uri.getQueryParameter(key))
-//        }
-        // queryParameterNames() 会自动decode，造成外部逻辑错误，所以这里需要根据&手动截取k=v
-        // encodedQuery() 无法解析带#的url，例如 https://kymjs.com/#/index?k=v，会造成k=v丢失
-        url?.let { noNullUrl ->
-            val index = noNullUrl.indexOf('?')
-            if (index >= 0 && noNullUrl.length > index) {
-                noNullUrl.substring(index + 1)
-            } else {
-                noNullUrl
-            }.split("&").forEach {
-                val idx = it.indexOf("=")
-                val key = if (idx > 0) it.substring(0, idx) else it
-                val value: String? = if (idx > 0 && it.length > idx + 1) it.substring(idx + 1) else null
-                // 通过url取到的value，都认为是string，autowired解析的时候会做兼容
-                extras.putString(key, value)
-            }
-        }
+        pathFixOriginalUrl = url ?: ""
+        val uri = Uri.parse(url ?: "")
+        parserString(uri.encodedFragment)
+        parserString(uri.encodedQuery)
     }
 
     fun getUrlWithParams() = getUrlWithParams { k, v -> "$k=$v" }
@@ -89,18 +151,58 @@ open class Navigator(var url: String?, val intent: Intent?) {
     fun getUrlWithParams(handle: NavigatorParamsFixHandle) = getUrlWithParams(handle::fix)
 
     fun getUrlWithParams(handle: (String, String) -> String): String {
-        val stringBuilder = StringBuilder(simpleUrl)
         var isFirst = true
+        val stringBuilder = StringBuilder()
         for (key in extras.keySet()) {
-            if (isFirst) {
-                stringBuilder.append("?")
-                isFirst = false
-            } else {
-                stringBuilder.append("&")
+            if (!kvPair.contains(key)) {
+                val kv = handle(key, extras.get(key)?.toString() ?: "")
+                if (!TextUtils.isEmpty(kv)) {
+                    if (isFirst) {
+                        isFirst = false
+                        stringBuilder.append(kv)
+                    } else {
+                        stringBuilder.append('&').append(handle(key, extras.get(key)?.toString() ?: ""))
+                    }
+                }
             }
-            stringBuilder.append(handle(key, extras.get(key)?.toString() ?: ""))
         }
-        return stringBuilder.toString()
+
+        val uri = Uri.parse(pathFixOriginalUrl)
+        val query = uri.encodedQuery ?: ""
+        val fragment = uri.encodedFragment ?: ""
+        var newUrl = if (TextUtils.isEmpty(stringBuilder)) {
+            pathFixOriginalUrl
+        } else if (!TextUtils.isEmpty(query)) {
+            if (!query.startsWith('&')) {
+                stringBuilder.append('&')
+            }
+            stringBuilder.append(query)
+            pathFixOriginalUrl.replace(query, stringBuilder.toString())
+        } else if (!TextUtils.isEmpty(fragment)) {
+            val index = pathFixOriginalUrl.indexOf(fragment)
+            if (index > -1) {
+                val temp = pathFixOriginalUrl.substring(0, index)
+                if (temp.contains('?')) {
+                    pathFixOriginalUrl.replace("?", "?$stringBuilder")
+                } else {
+                    pathFixOriginalUrl.replace("#", "?$stringBuilder#")
+                }
+            } else {
+                pathFixOriginalUrl
+            }
+        } else if (pathFixOriginalUrl.contains('?')) {
+            pathFixOriginalUrl.replace("?", "?$stringBuilder")
+        } else {
+            "$pathFixOriginalUrl?$stringBuilder"
+        }
+
+        kvPair.keys.forEach {
+            if (extras.containsKey(it)) {
+                newUrl = newUrl.replace("$it=${kvPair[it]}", "$it=${extras.get(it)}")
+            }
+        }
+
+        return newUrl
     }
 
     fun pending(): Navigator {
@@ -256,7 +358,14 @@ open class Navigator(var url: String?, val intent: Intent?) {
             }
         }
         var match = matchRouteMap(matchUrl)
-        match?.getExtras()?.putAll(extras)
+        match?.getExtras()?.let { b ->
+            b.putAll(extras)
+            kvPair.keys.forEach {
+                if (!b.containsKey(it)) {
+                    b.putString(it, kvPair[it])
+                }
+            }
+        }
         match?.let {
             debug("Navigator::createIntent", "match route $it")
         }
@@ -362,7 +471,14 @@ open class Navigator(var url: String?, val intent: Intent?) {
         }
         debug("Navigator::navigationFragment", "path replace to $matchUrl")
         var match = matchRouteMap(matchUrl)
-        match?.getExtras()?.putAll(extras)
+        match?.getExtras()?.let { b ->
+            b.putAll(extras)
+            kvPair.keys.forEach {
+                if (!b.containsKey(it)) {
+                    b.putString(it, kvPair[it])
+                }
+            }
+        }
         match?.let {
             debug("Navigator::navigationFragment", "match route $it")
         }
@@ -457,7 +573,15 @@ open class Navigator(var url: String?, val intent: Intent?) {
             return
         }
 
-        match?.getExtras()?.putAll(extras)
+        match?.getExtras()?.let { b ->
+            b.putAll(extras)
+            kvPair.keys.forEach {
+                if (!b.containsKey(it)) {
+                    b.putString(it, kvPair[it])
+                }
+            }
+        }
+
         match?.let {
             debug("Navigator::navigation", "match route $it")
         }
@@ -554,7 +678,7 @@ open class Navigator(var url: String?, val intent: Intent?) {
             }
             callback.onArrival(this)
         } else {
-            callback.onLost(this)
+            callback.onLost(this, requestCode)
         }
     }
 

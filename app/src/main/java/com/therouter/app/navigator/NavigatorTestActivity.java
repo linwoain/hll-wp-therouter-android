@@ -35,8 +35,9 @@ public class NavigatorTestActivity extends AppCompatActivity {
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.navigator);
-        setTitle("导航测试用例");
+        setTitle("页面导航跳转测试用例");
         // @Autowired 注入，这一行应该写在BaseActivity中更好
+        // 如果用到了onNewIntent()，也需要调用这一行，并且在调用前需要将新intent 重新set一遍
         TheRouter.inject(this);
 
         InternalBeanTest.RowBean bean = new InternalBeanTest.RowBean();
@@ -166,8 +167,8 @@ public class NavigatorTestActivity extends AppCompatActivity {
                             }
 
                             @Override
-                            public void onLost(@NotNull Navigator navigator) {
-                                super.onLost(navigator);
+                            public void onLost(@NotNull Navigator navigator, int requestCode) {
+                                super.onLost(navigator, requestCode);
                                 Toast.makeText(v.getContext(), "丢失页面" + navigator.getUrl(), Toast.LENGTH_SHORT).show();
                             }
 
@@ -197,8 +198,8 @@ public class NavigatorTestActivity extends AppCompatActivity {
                     }
 
                     @Override
-                    public void onLost(@NotNull Navigator navigator) {
-                        super.onLost(navigator);
+                    public void onLost(@NotNull Navigator navigator, int requestCode) {
+                        super.onLost(navigator, requestCode);
                         Toast.makeText(v.getContext(), "丢失页面" + navigator.getUrl(), Toast.LENGTH_SHORT).show();
                     }
 
@@ -222,8 +223,8 @@ public class NavigatorTestActivity extends AppCompatActivity {
                     }
 
                     @Override
-                    public void onLost(@NotNull Navigator navigator) {
-                        super.onLost(navigator);
+                    public void onLost(@NotNull Navigator navigator, int requestCode) {
+                        super.onLost(navigator, requestCode);
                         Toast.makeText(v.getContext(), "丢失页面" + navigator.getUrl(), Toast.LENGTH_SHORT).show();
                     }
 
